@@ -132,7 +132,7 @@ def confusion_matrix(model, y_test, x_test, output):
     #plt.show()
 
 class TransferLearning():
-    def __init__(self, images_path, train_test_split=0.80, batch_size=2, epochs=200, max_items_per_class = 1000, hidden_layer_size=128, data_augmentation=True, substract_pixel_mean=True, model_path='', save_model_name='model.h5', save_weights_name='weights.h5' ):
+    def __init__(self, images_path, train_test_split=0.80, batch_size=2, batch_size_ft=2, epochs=200, epochs_ft=10, max_items_per_class = 1000, hidden_layer_size=128, data_augmentation=True, substract_pixel_mean=False, model_path='', save_model_name='model.h5', save_weights_name='weights.h5' ):
         self.images_path = images_path
         self.model_path = model_path
         self.save_model_name = save_model_name
@@ -140,7 +140,9 @@ class TransferLearning():
 
         self.train_test_split = train_test_split
         self.batch_size = batch_size
+        self.batch_size_ft = batch_size_ft
         self.epochs = epochs
+        self.epochs_ft = epochs_ft
         self.max_items_per_class = max_items_per_class
         self.hidden_layer_size = hidden_layer_size
         self.data_augmentation = data_augmentation
@@ -168,7 +170,7 @@ class TransferLearning():
                     o+=1
                     if o > self.max_items_per_class:
                         break
-
+            break
             f.extend(filenames)
             break
 
@@ -224,11 +226,18 @@ class TransferLearning():
         # learn in a few paragraphs.
         x = self.base_model(inputs, training=False)
         # Convert features of shape `base_model.output_shape[1:]` to vectors
-        x = keras.layers.GlobalAveragePooling2D()(x)#this flattens also
+        features_vector = keras.layers.GlobalAveragePooling2D()(x)#this flattens also
+  
+        self.embedding = keras.Model(inputs, features_vector)
+        #image embedding model
+        self.embedding.save_weights(self.model_path+"embedding_"+self.save_weights_name) #load this weights in case of an error...
+        #save the model
+        self.embedding.save(self.model_path+"embedding_"+self.save_model_name)
+
         # A Dense classifier with a single unit (binary classification)
         #outputs = keras.layers.Dense(1)(x)
         #x = Flatten()(x)
-        x = keras.layers.Dropout(0.2)(x)  # Regularize with dropout
+        x = keras.layers.Dropout(0.2)(features_vector)  # Regularize with dropout
         x = Dense(self.hidden_layer_size, activation="relu")(x)
         x = keras.layers.Dropout(0.5)(x)
         outputs = Dense(self.num_classes,
@@ -326,22 +335,26 @@ class TransferLearning():
                     shuffle=True_)
 
 
-        #plot history
-        plt.plot(np.arange(1, self.epochs+1), history.history['loss'], label='Training Loss')
-        plt.plot(np.arange(1, self.epochs+1), history.history['val_loss'], label='Validation Loss')
-        plt.title('Training vs. Validation Loss', size=20)
-        plt.xlabel('Epoch', size=14)
-        plt.legend();
-        plt.savefig('train_val_loss.png');
-        plt.close()
-        plt.plot(history.history['acc'])
-        plt.plot(history.history['val_acc'])
-        plt.title('model accuracy')
-        plt.ylabel('accuracy')
-        plt.xlabel('epoch')
-        plt.legend(['train', 'val'], loc='upper left')
-        plt.savefig('train_val_accuracy.png')
-        plt.close()
+        try:
+            #plot history
+            plt.plot(np.arange(1, self.epochs+1), history.history['loss'], label='Training Loss')
+            plt.plot(np.arange(1, self.epochs+1), history.history['val_loss'], label='Validation Loss')
+            plt.title('Training vs. Validation Loss', size=20)
+            plt.xlabel('Epoch', size=14)
+            plt.legend();
+            plt.savefig('train_val_loss.png');
+            plt.close()
+            plt.plot(history.history['acc'])
+            plt.plot(history.history['val_acc'])
+            plt.title('model accuracy')
+            plt.ylabel('accuracy')
+            plt.xlabel('epoch')
+            plt.legend(['train', 'val'], loc='upper left')
+            plt.savefig('train_val_accuracy.png')
+            plt.close()
+        except:
+            pass
+        
         try:
             # score trained model
             scores = self.model.evaluate(self.x_test,
@@ -356,15 +369,19 @@ class TransferLearning():
         #nft non fine tunning
         self.model.save_weights(self.model_path+"nft_"+self.save_weights_name) #load this weights in case of an error...
         #save the model
-        #model.save(model_path+"nft_"+save_model_path)
+        self.model.save(self.model_path+"nft_"+self.save_model_name)
+        try:
+            confusion_matrix(self.model, self.y_train, self.x_train, "conf_train.png")
+
+        except:
+            print("confusion matrices error train")
+            
         try:
             confusion_matrix(self.model, self.y_test, self.x_test, "conf_test.png")
-            confusion_matrix(self.model, self.y_train, self.x_train, "conf_train.png")
-        
-        except:
-            print("fine tunnning confusion matrices error")
-            
 
+        except:
+            print("confusion matrices error test")
+            
     def fineTunning(self):
         #Fine tunning
         # Unfreeze the base_model. Note that it keeps running in inference mode
@@ -385,15 +402,14 @@ class TransferLearning():
         #    loss=keras.losses.BinaryCrossentropy(from_logits=True),
         #    metrics=[keras.metrics.BinaryAccuracy()],
         #)
-        epochs = 10
-        batch_size = 1
-        try:
-            self.model.fit(self.x_train, self.y_train,
+        epochs = self.epochs_ft
+        batch_size = self.batch_size_ft
+        self.model.fit(self.x_train, self.y_train,
                         batch_size=batch_size,
                         epochs=epochs,
                         validation_data=(self.x_test, self.y_test),
                         shuffle=True_)
-
+        try:
             # score trained model
             scores = self.model.evaluate(self.x_test,
                                     self.y_test,
@@ -403,7 +419,7 @@ class TransferLearning():
             print('Test accuracy:', scores[1])
 
         except:
-            print("Error in fine tunning part")
+            print("Error in fine tunning score part")
 
         self.model.save_weights(self.model_path+self.save_weights_name)
         #save the model
@@ -429,21 +445,30 @@ model_path = ''
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Transfer Learning Sample")
-    parser.add_argument('-ip', '--images_path', type=str, default=r'images', help="path to the images directory with images splitted by class")
-    parser.add_argument('-tts', '--train_test_split', type=float, default=0.80, help="path to the configuration file")
-    parser.add_argument("-bs", "--batch_size", type=int, default=2, help="path to the input directory")
-    parser.add_argument("-e", "--epochs", type=int, default=10, help="path to the input model")
-    parser.add_argument("-mipc", "--max_items_per_class", type=int, default=1000, help="path to the input weights")
+    
+    parser.add_argument('-cp', '--config_path', type=str, default=r'config.yaml', help="path to the configuration file")
+    parser.add_argument("-pc", "--pre_classify", action="store_true",
+                        help="pre classify before object detection between target classes")
+    
+    parser.add_argument('-hp', '--hyper', action="store_true", help="path to the images directory with images splitted by class")
+    parser.add_argument('-ip', '--images_path', type=str, default=r'D:\model10', help="path to the images directory with images splitted by class")
+    parser.add_argument('-tts', '--train_test_split', type=float, default=1.0, help="path to the configuration file")
+    parser.add_argument("-bs", "--batch_size", type=int, default=32, help="path to the input directory")
+    parser.add_argument("-bsf", "--batch_size_ft", type=int, default=3, help="path to the input directory")
+    parser.add_argument("-e", "--epochs", type=int, default=250, help="path to the input model")
+    parser.add_argument("-ef", "--epochs_ft", type=int, default=10, help="path to the input model")
+    parser.add_argument("-mipc", "--max_items_per_class", type=int, default=310, help="path to the input weights")
     parser.add_argument("-hls", "--hidden_layer_size", type=int, default=256, help="path to the input weights")
     parser.add_argument("-da", "--data_augmentation", type=bool, default=True, help="use data augmentation?")
-    parser.add_argument("-spm", "--substract_pixel_mean", type=bool, default=True, help="substract pixel mean?")
-    parser.add_argument("-mp", "--model_path", type=str, default=r'', help="mode path")
+    parser.add_argument("-spm", "--substract_pixel_mean", type=bool, default=False, help="substract pixel mean?")
+    parser.add_argument("-mp", "--model_path", type=str, default=r'inceptionresnetv2/', help="mode path with slash i.e path/")
     parser.add_argument("-smn", "--save_model_name", type=str, default=r'model.h5', help="model name")
     parser.add_argument("-swn", "--save_weights_name", type=str, default=r'weights.h5', help="weights name")
     
+
     args = parser.parse_args()
     print(args)
 
-    transfer_learning = TransferLearning(args.images_path, args.train_test_split, args.batch_size, args.epochs, args.max_items_per_class, args.hidden_layer_size, args.data_augmentation, args.substract_pixel_mean, args.model_path, args.save_model_name, args.save_weights_name)
+    transfer_learning = TransferLearning(args.images_path, args.train_test_split, args.batch_size, args.batch_size_ft, args.epochs, args.epochs_ft, args.max_items_per_class, args.hidden_layer_size, args.data_augmentation, args.substract_pixel_mean, args.model_path, args.save_model_name, args.save_weights_name)
 
     transfer_learning.do() 
