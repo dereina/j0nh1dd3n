@@ -164,7 +164,7 @@ class Inference:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="")
     # Optional argument
-    default_inou = r'D:\model10'
+    default_inou = r'D:\model'
     parser.add_argument('-o', '--output', type=str, default=default_inou, help="path to the output directory")
     parser.add_argument('-cp', '--config_path', type=str, default=r'config.yaml', help="path to the configuration file")
     parser.add_argument("-i", "--input", type=str, default=default_inou, help="path to the input directory")
