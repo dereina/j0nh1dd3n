@@ -203,7 +203,7 @@ class Clustering():
         self.saveResults(len(set(clustering.labels_)), clustering.labels_, -1)
 
 if __name__ == "__main__":
-    default_inou = r'D:\clustering'
+    default_inou = r'C:\clustering'
     parser = argparse.ArgumentParser(description="")
     parser.add_argument('-o', '--output', type=str, default=default_inou, help="path to the output directory")
     parser.add_argument('-cp', '--config_path', type=str, default=r'config.yaml', help="path to the configuration file")
