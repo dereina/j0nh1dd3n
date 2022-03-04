@@ -451,7 +451,7 @@ if __name__ == "__main__":
                         help="pre classify before object detection between target classes")
     
     parser.add_argument('-hp', '--hyper', action="store_true", help="path to the images directory with images splitted by class")
-    parser.add_argument('-ip', '--images_path', type=str, default=r'D:\model10', help="path to the images directory with images splitted by class")
+    parser.add_argument('-ip', '--images_path', type=str, default=r'C:\model', help="path to the images directory with images splitted by class")
     parser.add_argument('-tts', '--train_test_split', type=float, default=1.0, help="path to the configuration file")
     parser.add_argument("-bs", "--batch_size", type=int, default=32, help="path to the input directory")
     parser.add_argument("-bsf", "--batch_size_ft", type=int, default=3, help="path to the input directory")
