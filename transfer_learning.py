@@ -40,6 +40,12 @@ import tensorflow as tf
 
 import argparse
 
+from google.colab import drive
+
+
+physical_devices = tf.config.list_physical_devices('GPU') 
+for gpu_instance in physical_devices: 
+    tf.config.experimental.set_memory_growth(gpu_instance, True)
 
 #utils
 def return_loaded_batch(X, y, index, batch_size):
@@ -79,15 +85,31 @@ def lr_schedule(epoch):
     # Returns
         lr (float32): learning rate
     """
-    lr = 1e-3
+    """
+    lr = 1e-2 #* 0.5e-3
     if epoch > 180:
-        lr *= 0.5e-3
+        lr *= 0.5e-5
     elif epoch > 160:
-        lr *= 1e-3
+        lr *= 1e-5
     elif epoch > 120:
-        lr *= 1e-2
+        lr *= 1e-4
+    elif epoch > 100:
+        lr *= 1e-3
     elif epoch > 80:
+        lr *= 1e-2
+    elif epoch > 40:
         lr *= 1e-1
+    """
+    lr = 1e-2 #* 0.5e-3
+    if epoch > 60:
+        lr *= 0.5e-3
+    elif epoch > 50:
+        lr *= 1e-3
+    elif epoch > 40:
+        lr *= 1e-2
+    elif epoch > 30:
+        lr *= 1e-1
+    
     print('Learning rate: ', lr)
     return lr
 
@@ -158,12 +180,13 @@ class TransferLearning():
         i=0
         o=0
         for (dirpath, dirnames, filenames) in walk(self.images_path):
-            for dir_name in dirnames:
+            for dir_name in sorted(dirnames):
+                print(dir_name)
                 self.label_encoder[dir_name]=i
                 i+=1
                 o=0
                 for file in glob.glob(join(dirpath, dir_name)+"/*.png"):
-                    print(file)
+                    #print(file)
                     #dict_images_X[dir_name].append(file)
                     X_fishes.append(file)
                     y_fishes.append(self.label_encoder[dir_name])
@@ -178,8 +201,8 @@ class TransferLearning():
         X=[]
 
         for item, cat in zip(X_fishes, y_fishes):
-            print(cat)
-            print(item)
+            #print(cat)
+            #print(item)
             X.append(cv2.imread(item))
             
         #y_fishes = to_categorical(y_fishes)
@@ -227,19 +250,64 @@ class TransferLearning():
         x = self.base_model(inputs, training=False)
         # Convert features of shape `base_model.output_shape[1:]` to vectors
         features_vector = keras.layers.GlobalAveragePooling2D()(x)#this flattens also
-  
+        #features_vector = keras.layers.Flatten()(x)#this flattens also
+        
         self.embedding = keras.Model(inputs, features_vector)
         #image embedding model
         self.embedding.save_weights(self.model_path+"embedding_"+self.save_weights_name) #load this weights in case of an error...
         #save the model
         self.embedding.save(self.model_path+"embedding_"+self.save_model_name)
 
+        
+        #a conv2d that is trained prepared for an specific size...
+        print("the shape")
+        print(x.shape)
+        #(None, 9, 34, 1536)
+        x = Conv2D(filters=x.shape[3],
+          kernel_size=3,
+          #padding="same",
+          padding="valid",
+          activation='relu')(x)
+        x = keras.layers.MaxPooling2D(pool_size=(2, 2))(x)
+        x = BatchNormalization()(x)
+        print("the shape2")
+        print("the shape")
+        print(x.shape)
+        #(None, 3, 16, 1536)
+        x = Conv2D(filters=x.shape[3],
+          kernel_size=3,
+          strides=(1, 1),
+          #padding="same",
+          padding="valid",
+          activation='relu')(x)
+        x = keras.layers.MaxPooling2D(pool_size=(1, 2))(x)
+        x = BatchNormalization()(x)
+        print("the shape2")
+        #features_vector = keras.layers.GlobalAveragePooling2D()(x)#this flattens also
+        features_vector = keras.layers.GlobalMaxPooling2D()(x)#this flattens too
+        #features_vector = keras.layers.Flatten()(x)
+        print(features_vector.shape)
+
+
         # A Dense classifier with a single unit (binary classification)
         #outputs = keras.layers.Dense(1)(x)
         #x = Flatten()(x)
         x = keras.layers.Dropout(0.2)(features_vector)  # Regularize with dropout
-        x = Dense(self.hidden_layer_size, activation="relu")(x)
-        x = keras.layers.Dropout(0.5)(x)
+        x = Dense(self.hidden_layer_size)(x)
+        #x = Dense(self.hidden_layer_size, activation="tanh")(x)
+        x = BatchNormalization()(x)
+        x = keras.layers.LeakyReLU(alpha=0.1)(x)
+        #x = keras.layers.Dropout(0.2)(x)
+        #x = Dense(self.hidden_layer_size//2, activation="tanh")(x)
+        x = Dense(self.hidden_layer_size//2)(x)
+        x = BatchNormalization()(x)
+
+        x = keras.layers.LeakyReLU(alpha=0.1)(x)
+
+        #x = keras.layers.Dropout(0.2)(x)
+        #x = BatchNormalization()(x)
+        #x = Dense(self.hidden_layer_size//4, activation="tanh")(x)
+        #x = keras.layers.Dropout(0.2)(x)
         outputs = Dense(self.num_classes,
                         activation='softmax')(x)
         self.model = keras.Model(inputs, outputs)
@@ -366,6 +434,8 @@ class TransferLearning():
         except:
             print("evaluate exception")
 
+        #ºººººººdrive.mount('/content/gdrive', force_remount=True)
+
         #nft non fine tunning
         self.model.save_weights(self.model_path+"nft_"+self.save_weights_name) #load this weights in case of an error...
         #save the model
@@ -395,7 +465,7 @@ class TransferLearning():
 
         #fine tunnning after training the classifier
         self.model.compile(loss='categorical_crossentropy',
-                    optimizer=Adam(lr=1e-7),
+                    optimizer=Adam(lr=1e-8),
                     metrics=['acc'])
         #model.compile(
         #    optimizer=keras.optimizers.Adam(1e-5),  # Low learning rate
@@ -444,27 +514,31 @@ save_weights_path = 'weights.h5' #from working directory
 model_path = ''
 
 if __name__ == "__main__":
+    print("joe")
     parser = argparse.ArgumentParser(description="Transfer Learning Sample")
     
     parser.add_argument('-cp', '--config_path', type=str, default=r'config.yaml', help="path to the configuration file")
     parser.add_argument("-pc", "--pre_classify", action="store_true",
                         help="pre classify before object detection between target classes")
-    
+    print("joe")
+
     parser.add_argument('-hp', '--hyper', action="store_true", help="path to the images directory with images splitted by class")
-    parser.add_argument('-ip', '--images_path', type=str, default=r'C:\model', help="path to the images directory with images splitted by class")
+    parser.add_argument('-ip', '--images_path', type=str, default=r'classification14', help="path to the images directory with images splitted by class")
     parser.add_argument('-tts', '--train_test_split', type=float, default=1.0, help="path to the configuration file")
-    parser.add_argument("-bs", "--batch_size", type=int, default=32, help="path to the input directory")
-    parser.add_argument("-bsf", "--batch_size_ft", type=int, default=3, help="path to the input directory")
-    parser.add_argument("-e", "--epochs", type=int, default=250, help="path to the input model")
-    parser.add_argument("-ef", "--epochs_ft", type=int, default=10, help="path to the input model")
-    parser.add_argument("-mipc", "--max_items_per_class", type=int, default=310, help="path to the input weights")
-    parser.add_argument("-hls", "--hidden_layer_size", type=int, default=256, help="path to the input weights")
+    parser.add_argument("-bs", "--batch_size", type=int, default=64, help="path to the input directory")
+    parser.add_argument("-bsf", "--batch_size_ft", type=int, default=32, help="path to the input directory")
+    parser.add_argument("-e", "--epochs", type=int, default=80, help="epochs")
+    parser.add_argument("-ef", "--epochs_ft", type=int, default=10, help="epochs fine tunning")
+    parser.add_argument("-mipc", "--max_items_per_class", type=int, default=1050, help="max items per class")
+    parser.add_argument("-hls", "--hidden_layer_size", type=int, default=1536, help="hidden layer size")
     parser.add_argument("-da", "--data_augmentation", type=bool, default=True, help="use data augmentation?")
     parser.add_argument("-spm", "--substract_pixel_mean", type=bool, default=False, help="substract pixel mean?")
-    parser.add_argument("-mp", "--model_path", type=str, default=r'inceptionresnetv2/', help="mode path with slash i.e path/")
+    parser.add_argument("-mp", "--model_path", type=str, default=r'./', help="mode path with slash i.e path/")
     parser.add_argument("-smn", "--save_model_name", type=str, default=r'model.h5', help="model name")
     parser.add_argument("-swn", "--save_weights_name", type=str, default=r'weights.h5', help="weights name")
     
+    print("joe")
+    parser.add_argument("-f", "--file_colab_json", type=str, default=r'', help="param for colab runtime to work...")
 
     args = parser.parse_args()
     print(args)
