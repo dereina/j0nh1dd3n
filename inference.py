@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
     parser.add_argument("-c", "--crop", type=bool, default=False, help="crop image width by 1/3")
     parser.add_argument("-pp", "--prepend_probability", type=bool, default=False, help="prepends the probability to image name")
-    parser.add_argument("-lc", "--list_classes", nargs="+", default=["back", "empty", "lomo_abierto",  "manchas","rosa", "sano"])
+    parser.add_argument("-lc", "--list_classes", nargs="+", default=[])
 
     args = parser.parse_args()
     print(args)
